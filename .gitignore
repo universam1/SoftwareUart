@@ -1,1 +1,11 @@
 .DS_Store
+*.vcxproj
+*.filters
+__vm
+Debug
+Release
+.vs
+*.sln
+*.cppproj
+*.atsln
+*.componentinfo.xml

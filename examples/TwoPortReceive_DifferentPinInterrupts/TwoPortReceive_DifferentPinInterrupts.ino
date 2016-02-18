@@ -1,0 +1,121 @@
+/*
+  Software serial multiple serial test
+
+ Receives from the two software serial ports,
+ sends to the hardware serial port.
+
+ In order to listen on a software port, you call port.listen().
+ When using two software serial ports, you have to switch ports
+ by listen()ing on each one in turn. Pick a logical time to switch
+ ports, like the end of an expected transmission, or when the
+ buffer is empty. This example switches ports when there is nothing
+ more to read from a port
+
+ The circuit:
+ Two devices which communicate serially are needed.
+ * First serial device's TX attached to digital pin 2, RX to pin 3
+ * Second serial device's TX attached to digital pin 4, RX to pin 5
+
+ created 18 Apr. 2011
+ modified 9 Apr 2012
+ by Tom Igoe
+ based on Mikal Hart's twoPortRXExample
+ adapted by Nick Stedman 15 July 2012
+ modified for SoftwareUart
+ by Mark Cooke 10 Feb 2016 https://github.com/micooke/SoftwareUart
+
+ This example code is in the public domain.
+
+ */
+ // SoftwareUart                 : Nano compile size = 4054 Flash, 456 SRAM
+#include <SoftwareUart.h>
+// software serial #1: TX = digital pin 3, RX = digital pin 2
+SoftwareUart<> portOne(2, 3); // RX, TX
+
+// software serial #2: TX = digital pin 8, RX = digital pin 9
+SoftwareUart<> portTwo(8, 9);
+
+// You need to roll your own interrupt for SoftwareUart
+// Example interrupt routine for SoftwareUart on pin 8,8
+// Note : make sure you know what pin interrupt bank your pin is attached to.
+//
+// Arduino uno/nano (ATmega328p)
+// PCICR  = [   -   |   -   |   -   |   -   |   -   |  PCIF2|  PCIF1|  PCIF0]
+// PCMSK2 = [PCINT23|PCINT22|PCINT21|PCINT20|PCINT19|PCINT18|PCINT17|PCINT16]
+//          [     D7|     D6|     D5|     D4|     D3|     D2|     D1|     D0]
+// PCMSK1 = [   -   |PCINT14|PCINT13|PCINT12|PCINT11|PCINT10|PCINT09|PCINT08]
+//          [   -   |    RST|     A5|     A4|     A3|     A2|     A1|     A0]
+// PCMSK0 = [ PCINT7| PCINT6| PCINT5| PCINT4| PCINT3| PCINT2| PCINT1| PCINT0]
+//          [  XTAL2|  XTAL1|    D13|    D11|    D12|    D10|     D9|     D8]
+// Digispark (ATtiny85)
+// GIMSK  = [   -   |  INT0 |  PCIE |   -   |   -   |   -   |   -   |   -   ]
+//GIMSK = 0x00;
+// PCMSK0 = [   -   |   -   | PCINT5| PCINT4| PCINT3| PCINT2| PCINT1| PCINT0]
+//          [   -   |   -   |    RST|    PB4|    PB3|    PB2|    PB1|    PB0]
+// Arduino Micro (ATmega32u4)
+// PCICR  = [   -   |   -   |   -   |   -   |   -   |   -   |   -   |  PCIE0]
+// PCMSK0 = [ PCINT7| PCINT6| PCINT5| PCINT4| PCINT3| PCINT2| PCINT1| PCINT0]
+//          [    D12|    D11|    D10|     D9|   MISO|   MOSI|    SCK|     SS]
+ISR(PCINT0_vect)
+{
+	portTwo.handle_interrupt();
+}
+#if defined(PCINT2_vect)
+ISR(PCINT2_vect)
+{
+	portOne.handle_interrupt();
+}
+#else
+#error This example wont work. The chosen board does not have Pin Interrupt Bank 2 (PCMSK2). Note - ATmega328p boards will work!
+#endif
+
+void setup()
+{
+	// Open serial communications and wait for port to open:
+	Serial.begin(9600);
+
+	// Wait for the Serial connection - required for Leonardo/Micro only
+#ifdef __AVR_ATmega32U4__
+	while (!Serial);
+#endif
+
+	// Start each software serial port
+	portOne.begin(9600);
+	portTwo.begin(9600);
+}
+
+void loop()
+{
+	// By default, the last intialized port is listening.
+	// when you want to listen on a port, explicitly select it:
+	//portOne.listen(); // Not needed for SoftwareUart
+	Serial.println("Data from port one:");
+	// while there is data coming in, read it
+	// and send to the hardware serial port:
+	while (portOne.available() > 0)
+	{
+		Serial.write(portOne.read());
+	}
+
+	// blank line to separate data from the two ports:
+	Serial.println();
+
+	// Now listen on the second port
+	//portTwo.listen(); // Not needed for SoftwareUart
+	// while there is data coming in, read it
+	// and send to the hardware serial port:
+	Serial.println("Data from port two:");
+	while (portTwo.available() > 0)
+	{
+		Serial.write(portTwo.read());
+	}
+
+	// blank line to separate data from the two ports:
+	Serial.println();
+}
+
+
+
+
+
+
