@@ -24,7 +24,7 @@ This example code is in the public domain.
 // SoftwareUart                 : Nano compile size = 4868 Flash, 454 SRAM
 // SoftwareSerialWithHalfDuplex : Nano compile size = 3880 Flash, 348 SRAM
 #include <SoftwareUart.h>
-SoftwareUart<> uart(8,8);
+SoftwareUart<> uart(8,9);
 
 // You need to roll your own interrupt for SoftwareUart
 // Example interrupt routine for SoftwareUart on pin 8,8

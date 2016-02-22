@@ -157,11 +157,11 @@ public:
 	bool isListening() { return true; }
 	bool stopListening() { setRxIntMsk(false); return true; }
 	bool overflow() { bool ret = _buffer_overflow; if (ret) { _buffer_overflow = false; } return ret; }
-	int peek();
+	int16_t peek();
 
 	virtual size_t write(uint8_t byte);
-	virtual int read();
-	virtual int available();
+	virtual int16_t read();
+	virtual int16_t available();
 	virtual void flush() { _receive_buffer_head = _receive_buffer_tail = 0; }
 	operator bool() { return true; }
 
@@ -230,8 +230,8 @@ void SoftwareUart<_SU_RX_BUFFER>::recv()
 	if (_inverse_logic ? rx_pin_read() : !rx_pin_read())
 	{
 		// Disable further interrupts during reception, this prevents
-	  // triggering another interrupt directly after we return, which can
-	  // cause problems at higher baudrates.
+		// triggering another interrupt directly after we return, which can
+		// cause problems at higher baudrates.
 		setRxIntMsk(false);
 
 		// Wait approximately 1/2 of a bit width to "center" the sample
@@ -261,7 +261,6 @@ void SoftwareUart<_SU_RX_BUFFER>::recv()
 			_receive_buffer[_receive_buffer_tail] = d; // save new byte
 			_receive_buffer_tail = next;
 		}
-
 		else
 		{
 			DebugPulse(_DEBUG_PIN1, 1);
@@ -452,7 +451,7 @@ void SoftwareUart<_SU_RX_BUFFER>::end()
 
 // Read data from buffer
 template <uint8_t _SU_RX_BUFFER>
-int SoftwareUart<_SU_RX_BUFFER>::read()
+int16_t SoftwareUart<_SU_RX_BUFFER>::read()
 {
 	if (!isListening())
 		return -1;
@@ -468,7 +467,7 @@ int SoftwareUart<_SU_RX_BUFFER>::read()
 }
 
 template <uint8_t _SU_RX_BUFFER>
-int SoftwareUart<_SU_RX_BUFFER>::available()
+int16_t SoftwareUart<_SU_RX_BUFFER>::available()
 {
 	if (!isListening())
 		return 0;
@@ -546,7 +545,7 @@ size_t SoftwareUart<_SU_RX_BUFFER>::write(uint8_t b)
 }
 
 template <uint8_t _SU_RX_BUFFER>
-int SoftwareUart<_SU_RX_BUFFER>::peek()
+int16_t SoftwareUart<_SU_RX_BUFFER>::peek()
 {
 	if (!isListening())
 		return -1;

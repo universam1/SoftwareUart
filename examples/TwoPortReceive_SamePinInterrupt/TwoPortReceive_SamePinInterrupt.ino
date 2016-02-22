@@ -69,7 +69,7 @@ SoftwareUart<> portTwo(11, 12); // RX, TX
 // PCICR  = [   -   |   -   |   -   |   -   |   -   |   -   |   -   |  PCIE0]
 // PCMSK0 = [ PCINT7| PCINT6| PCINT5| PCINT4| PCINT3| PCINT2| PCINT1| PCINT0]
 //          [    D12|    D11|    D10|     D9|   MISO|   MOSI|    SCK|     SS]
-#define MAX_LINE_LENGTH 30
+#define MAX_LINE_LENGTH 3*14
 uint32_t line_length = MAX_LINE_LENGTH;
 
 ISR(PCINT0_vect)
@@ -105,22 +105,52 @@ void loop()
 {
 	// while there is data coming in, read it and send to the hardware serial port:
 	uint16_t data_available = portOne.available() + portTwo.available();
+	char c;
 	while (data_available > 0)
 	{
 		if (portOne.available())
 		{
+			c = portOne.read();
 			Serial.write('[');
-			Serial.write(portOne.read());
+			if ((c != '\n') & (c != '\r'))
+			{
+				Serial.write(c);
+				line_length -= 3;
+			}
+			else if (c == '\r')
+			{
+				Serial.write("\\r");
+				line_length -= 3;
+			}
+			else
+			{
+				Serial.write("\\n");
+				line_length = 0;
+			}
 			Serial.write(']');
-			line_length -= 3;
 		}
 		else
 		{
+			c = portTwo.read();
 			Serial.write('(');
-			Serial.write(portTwo.read());
+			if ((c != '\n') & (c != '\r'))
+			{
+				Serial.write(c);
+				line_length -= 3;
+			}
+			else if (c == '\r')
+			{
+				Serial.write("\\r");
+				line_length -= 3;
+			}
+			else
+			{
+				Serial.write("\\n");
+				line_length = 0;
+			}
 			Serial.write(')');
-			line_length -= 3;
 		}
+
 		if (line_length == 0)
 		{
 			line_length = MAX_LINE_LENGTH;

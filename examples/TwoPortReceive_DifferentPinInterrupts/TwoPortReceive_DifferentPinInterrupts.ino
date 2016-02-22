@@ -56,6 +56,9 @@ SoftwareUart<> portTwo(8, 9);
 // PCICR  = [   -   |   -   |   -   |   -   |   -   |   -   |   -   |  PCIE0]
 // PCMSK0 = [ PCINT7| PCINT6| PCINT5| PCINT4| PCINT3| PCINT2| PCINT1| PCINT0]
 //          [    D12|    D11|    D10|     D9|   MISO|   MOSI|    SCK|     SS]
+#define MAX_LINE_LENGTH 3*14
+uint32_t line_length = MAX_LINE_LENGTH;
+
 ISR(PCINT0_vect)
 {
 	portTwo.handle_interrupt();
@@ -82,36 +85,67 @@ void setup()
 	// Start each software serial port
 	portOne.begin(9600);
 	portTwo.begin(9600);
+
+	Serial.println("Data from port one = [x]\nData from port two = (x)");
 }
 
 void loop()
 {
-	// By default, the last intialized port is listening.
-	// when you want to listen on a port, explicitly select it:
-	//portOne.listen(); // Not needed for SoftwareUart
-	Serial.println("Data from port one:");
-	// while there is data coming in, read it
-	// and send to the hardware serial port:
-	while (portOne.available() > 0)
+	// while there is data coming in, read it and send to the hardware serial port:
+	uint16_t data_available = portOne.available() + portTwo.available();
+	char c;
+	while (data_available > 0)
 	{
-		Serial.write(portOne.read());
+		if (portOne.available())
+		{
+			c = portOne.read();
+			Serial.write('[');
+			if ((c != '\n') & (c != '\r'))
+			{
+				Serial.write(c);
+				line_length -= 3;
+			}
+			else if (c == '\r')
+			{
+				Serial.write("\\r");
+				line_length -= 3;
+			}
+			else
+			{
+				Serial.write("\\n");
+				line_length = 0;
+			}
+			Serial.write(']');
+		}
+		else
+		{
+			c = portTwo.read();
+			Serial.write('(');
+			if ((c != '\n') & (c != '\r'))
+			{
+				Serial.write(c);
+				line_length -= 3;
+			}
+			else if(c == '\r')
+			{
+				Serial.write("\\r");
+				line_length -= 3;
+			}
+			else
+			{
+				Serial.write("\\n");
+				line_length = 0;
+			}
+			Serial.write(')');
+		}
+
+		if (line_length == 0)
+		{
+			line_length = MAX_LINE_LENGTH;
+			Serial.println();
+		}
+		data_available = portOne.available() + portTwo.available();
 	}
-
-	// blank line to separate data from the two ports:
-	Serial.println();
-
-	// Now listen on the second port
-	//portTwo.listen(); // Not needed for SoftwareUart
-	// while there is data coming in, read it
-	// and send to the hardware serial port:
-	Serial.println("Data from port two:");
-	while (portTwo.available() > 0)
-	{
-		Serial.write(portTwo.read());
-	}
-
-	// blank line to separate data from the two ports:
-	Serial.println();
 }
 
 
