@@ -4,6 +4,8 @@ SoftwareUart (adapted from SoftwareSerialWithHalfDuplex)
 This library is based off SoftwareSerial from Arduino 1.6.5r5, with half-duplex changes
 from @nickstedman's SoftwareSerialWithHalfDuplex library.
 
+Modifications by @micooke to reduce codespace, and template it to allow changing the rx buffer.
+
 [SoftwareSerialWithHalfDuplex] (https://github.com/nickstedman/SoftwareSerialWithHalfDuplex)
 is a simple modification that should definitely be rolled into the SoftwareSerial core library.
 
@@ -76,8 +78,16 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #ifndef SoftwareUart_h
 #define SoftwareUart_h
 
+#ifndef SU_MODE
+#define SU_MODE 0
+#endif
+
+#define SU_DUPLEX 0
+#define SU_TX_ONLY 1
+#define SU_RX_ONLY 2
+
 #include <inttypes.h>
-#include <Stream.h>
+
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
 #include <Arduino.h>
@@ -90,29 +100,21 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #ifndef GCC_VERSION
 #define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
 #endif
-
-// When set, _DEBUG co-opts pins 11 and 13 for debugging with an
-// oscilloscope or logic analyzer.  Beware: it also slightly modifies
-// the bit times, so don't rely on it too much at high baud rates
-#ifndef _DEBUG
-#define _DEBUG 0
-#endif
-
-// Debug the pins for _DEBUG level > 1
-#define _DEBUG_PIN1 11
-#define _DEBUG_PIN2 13
-
+#if (SU_MODE != SU_TX_ONLY)
+#include <Stream.h>
 template <uint8_t _SU_RX_BUFFER = 64>
 class SoftwareUart : public Stream
+#else
+class SoftwareUart
+#endif
 {
 private:
 	// per object data
-	uint8_t _receivePin;
-	uint8_t _receiveBitMask;
-	volatile uint8_t *_receivePortRegister;
-	uint8_t _transmitPin;								//NS Added
-	uint8_t _transmitBitMask;
-	volatile uint8_t *_transmitPortRegister;
+#if (SU_MODE != SU_TX_ONLY)
+	uint8_t _rxPin;
+	uint8_t _rxBitMask;
+	volatile uint8_t *_rxPort;
+
 	volatile uint8_t *_pcint_maskreg;
 	uint8_t _pcint_maskvalue;
 
@@ -120,23 +122,29 @@ private:
 	uint16_t _rx_delay_centering;
 	uint16_t _rx_delay_intrabit;
 	uint16_t _rx_delay_stopbit;
-	uint16_t _tx_delay;
 
 	bool _buffer_overflow;
-	bool _inverse_logic;
-	bool _full_duplex;							//NS Added
 
 	char _receive_buffer[_SU_RX_BUFFER];
 	volatile uint8_t _receive_buffer_tail;
 	volatile uint8_t _receive_buffer_head;
-	//static SoftwareUart *active_object;
 
 	// private methods
-	void recv() __attribute__((__always_inline__));
-	uint8_t rx_pin_read() { return *_receivePortRegister & _receiveBitMask; }
-	void setTX(uint8_t transmitPin);
-	void setRX(uint8_t receivePin);
-	void setRxIntMsk(bool enable) __attribute__((__always_inline__));
+	void recv();
+	uint8_t rx_pin_read() { return *_rxPort & _rxBitMask; }
+	void setRxIntMsk(bool enable);
+
+#endif
+#if (SU_MODE != SU_RX_ONLY)
+	uint8_t _txPin;								//NS Added
+	uint8_t _txBitMask;
+	volatile uint8_t *_txPort;
+
+	uint16_t _tx_delay;
+#endif
+
+	bool _inverse_logic;
+	bool _full_duplex;							//NS Added
 
 	// Return num - sub, or 1 if the result would be < 1
 	//static uint16_t subtract_cap(uint16_t num, uint16_t sub);
@@ -144,7 +152,7 @@ private:
 
 	// private static method for timing
 	//static inline void tunedDelay(uint16_t delay);
-	inline void tunedDelay(uint16_t delay);
+	inline void tunedDelay(uint16_t delay) { _delay_loop_2(delay); }
 
 public:
 	// public methods
@@ -152,55 +160,33 @@ public:
 	~SoftwareUart();
 	bool inverse_logic() { return _inverse_logic; }
 	void begin(long speed);
+
+#if (SU_MODE != SU_TX_ONLY)
 	bool listen() { _buffer_overflow = _receive_buffer_head = _receive_buffer_tail = 0; setRxIntMsk(true); return false; }
-	void end();
-	bool isListening() { return true; }
 	bool stopListening() { setRxIntMsk(false); return true; }
 	bool overflow() { bool ret = _buffer_overflow; if (ret) { _buffer_overflow = false; } return ret; }
 	int16_t peek();
-
-	virtual size_t write(uint8_t byte);
 	virtual int16_t read();
 	virtual int16_t available();
 	virtual void flush() { _receive_buffer_head = _receive_buffer_tail = 0; }
-	operator bool() { return true; }
-
-	using Print::write;
 
 	// public only for easy access by interrupt handlers
 	inline void handle_interrupt() __attribute__((__always_inline__)) { recv(); };
-};
-
-// Arduino 0012 workaround - removed
-
-//
-// Debugging
-//
-// This function generates a brief pulse
-// for debugging or measuring on an oscilloscope.
-inline void DebugPulse(uint8_t pin, uint8_t count)
-{
-#if (_DEBUG > 1)
-	volatile uint8_t *pport = portOutputRegister(digitalPinToPort(pin));
-
-	uint8_t val = *pport;
-	while (count--)
-	{
-		*pport = val | digitalPinToBitMask(pin);
-		*pport = val;
-	}
 #endif
-}
+
+#if (SU_MODE == SU_RX_ONLY)
+	virtual size_t write(uint8_t byte) { return 0; };
+#elif (SU_MODE != SU_RX_ONLY)
+	virtual size_t write(uint8_t byte);
+	//using Print::write;
+#endif
+};
 
 //
 // Private methods
 //
-template <uint8_t _SU_RX_BUFFER>
-inline void SoftwareUart<_SU_RX_BUFFER>::tunedDelay(uint16_t delay)
-{
-	_delay_loop_2(delay);
-}
 
+#if (SU_MODE != SU_TX_ONLY)
 //
 // The receive routine called by the interrupt handler
 //
@@ -236,7 +222,6 @@ void SoftwareUart<_SU_RX_BUFFER>::recv()
 
 		// Wait approximately 1/2 of a bit width to "center" the sample
 		tunedDelay(_rx_delay_centering);
-		DebugPulse(_DEBUG_PIN2, 1);
 
 		// Read each of the 8 bits
 		for (uint8_t i = 8; i > 0; --i)
@@ -244,7 +229,6 @@ void SoftwareUart<_SU_RX_BUFFER>::recv()
 
 			tunedDelay(_rx_delay_intrabit);
 			d >>= 1;
-			DebugPulse(_DEBUG_PIN2, 1);
 			if (rx_pin_read())
 				d |= 0x80;
 		}
@@ -263,13 +247,11 @@ void SoftwareUart<_SU_RX_BUFFER>::recv()
 		}
 		else
 		{
-			DebugPulse(_DEBUG_PIN1, 1);
 			_buffer_overflow = true;
 		}
 
 		// skip the stop bit
 		tunedDelay(_rx_delay_stopbit);
-		DebugPulse(_DEBUG_PIN1, 1);
 
 		// Re-enable interrupts when we're sure to be inside the stop bit
 		setRxIntMsk(true);
@@ -290,65 +272,14 @@ void SoftwareUart<_SU_RX_BUFFER>::recv()
 		::);
 #endif
 }
+#endif
 
-//
-// Constructor
-//
-template <uint8_t _SU_RX_BUFFER>
-SoftwareUart<_SU_RX_BUFFER>::SoftwareUart(uint8_t receivePin, uint8_t transmitPin, bool inverse_logic /* = false */) :
-	_rx_delay_centering(0),
-	_rx_delay_intrabit(0),
-	_rx_delay_stopbit(0),
-	_tx_delay(0),
-	_buffer_overflow(false),
-	_inverse_logic(inverse_logic)
-{
-	_full_duplex = (transmitPin != receivePin);
-	setTX(transmitPin);
-	setRX(receivePin);
-}
-
-//
-// Destructor
-//
-template <uint8_t _SU_RX_BUFFER>
-SoftwareUart<_SU_RX_BUFFER>::~SoftwareUart()
-{
-	end();
-}
-
-template <uint8_t _SU_RX_BUFFER>
-void SoftwareUart<_SU_RX_BUFFER>::setTX(uint8_t tx)
-{
-	// First write, then set output. If we do this the other way around,
-	  // the pin would be output low for a short while before switching to
-	  // output high. Now, it is input with pullup for a short while, which
-	  // is fine. With inverse logic, either order is fine.
-	digitalWrite(tx, _inverse_logic ? LOW : HIGH);
-
-	if (_full_duplex)	pinMode(tx, OUTPUT);					//NS Added
-	else pinMode(tx, INPUT);									//NS Added
-	_transmitPin = tx;  										//NS Added  
-
-	_transmitBitMask = digitalPinToBitMask(tx);
-	uint8_t port = digitalPinToPort(tx);
-	_transmitPortRegister = portOutputRegister(port);
-}
-
-template <uint8_t _SU_RX_BUFFER>
-void SoftwareUart<_SU_RX_BUFFER>::setRX(uint8_t rx)
-{
-	pinMode(rx, INPUT);
-	if (!_inverse_logic)
-		digitalWrite(rx, HIGH);  // pullup for normal logic!
-	_receivePin = rx;
-	_receiveBitMask = digitalPinToBitMask(rx);
-	uint8_t port = digitalPinToPort(rx);
-	_receivePortRegister = portInputRegister(port);
-}
-
+#if (SU_MODE != SU_TX_ONLY)
 template <uint8_t _SU_RX_BUFFER>
 uint16_t SoftwareUart<_SU_RX_BUFFER>::subtract_cap(uint16_t num, uint16_t sub)
+#else
+uint16_t SoftwareUart::subtract_cap(uint16_t num, uint16_t sub)
+#endif
 {
 	if (num > sub)
 		return num - sub;
@@ -359,12 +290,80 @@ uint16_t SoftwareUart<_SU_RX_BUFFER>::subtract_cap(uint16_t num, uint16_t sub)
 //
 // Public methods
 //
+//
+// Constructor
+//
+#if (SU_MODE != SU_TX_ONLY)
+template <uint8_t _SU_RX_BUFFER>
+SoftwareUart<_SU_RX_BUFFER>::SoftwareUart(uint8_t receivePin, uint8_t transmitPin, bool inverse_logic /* = false */)
+#else
+SoftwareUart::SoftwareUart(uint8_t receivePin, uint8_t transmitPin, bool inverse_logic /* = false */)
+#endif
+{
+	_full_duplex = (receivePin != transmitPin);
+	_inverse_logic = inverse_logic;
 
+#if (SU_MODE != SU_RX_ONLY)
+	_tx_delay = 0;
+	_txPin = transmitPin;
+	_txBitMask = digitalPinToBitMask(transmitPin);
+	_txPort = portOutputRegister(digitalPinToPort(transmitPin));
+	pinMode(_txPin, OUTPUT);
+
+	// First write, then set output. If we do this the other way around,
+	// the pin would be output low for a short while before switching to
+	// output high. Now, it is input with pullup for a short while, which
+	// is fine. With inverse logic, either order is fine.
+	digitalWrite(_txPin, _inverse_logic ? LOW : HIGH);
+
+#if (SU_MODE == SU_HALF_DUPLEX)
+	pinMode(_txPin, INPUT);
+#else
+	pinMode(_txPin, OUTPUT);
+#endif
+#endif
+
+#if (SU_MODE != SU_TX_ONLY)
+	_buffer_overflow = false;
+
+	_rx_delay_centering = 0;
+	_rx_delay_intrabit = 0;
+	_rx_delay_stopbit = 0;
+
+	_rxPin = receivePin;
+	_rxBitMask = digitalPinToBitMask(receivePin);
+	_rxPort = portOutputRegister(digitalPinToPort(receivePin));
+
+	pinMode(_rxPin, INPUT);
+	if (!_inverse_logic) { digitalWrite(_rxPin, HIGH); } // pullup for normal logic
+#endif
+}
+
+//
+// Destructor
+//
+#if (SU_MODE != SU_TX_ONLY)
+template <uint8_t _SU_RX_BUFFER>
+SoftwareUart<_SU_RX_BUFFER>::~SoftwareUart()
+#else
+SoftwareUart::~SoftwareUart()
+#endif
+{
+#if (SU_MODE != SU_TX_ONLY)
+	stopListening();
+#endif
+}
+
+#if (SU_MODE != SU_TX_ONLY)
 template <uint8_t _SU_RX_BUFFER>
 void SoftwareUart<_SU_RX_BUFFER>::begin(long speed)
+#else
+void SoftwareUart::begin(long speed)
+#endif
 {
-	_rx_delay_centering = _rx_delay_intrabit = _rx_delay_stopbit = _tx_delay = 0;
-
+#if (SU_MODE != SU_TX_ONLY)
+	_rx_delay_centering = _rx_delay_intrabit = _rx_delay_stopbit = 0;
+#endif
 	// Precalculate the various delays, in number of 4-cycle delays
 	uint16_t bit_delay = (F_CPU / speed) / 4;
 
@@ -373,10 +372,13 @@ void SoftwareUart<_SU_RX_BUFFER>::begin(long speed)
 	// 12 (gcc 4.8.2) or 14 (gcc 4.3.2) cycles from last bit to stop bit
 	// These are all close enough to just use 15 cycles, since the inter-bit
 	// timings are the most critical (deviations stack 8 times)
+#if (SU_MODE != SU_RX_ONLY)
 	_tx_delay = subtract_cap(bit_delay, 15 / 4);
+#endif
 
+#if (SU_MODE != SU_TX_ONLY)
 	// Only setup rx when we have a valid PCINT for this pin
-	if (digitalPinToPCICR(_receivePin)) {
+	if (digitalPinToPCICR(_rxPin)) {
 #if GCC_VERSION > 40800
 		// Timings counted from gcc 4.8.2 output. This works up to 115200 on
 		// 16Mhz and 57600 on 8Mhz.
@@ -417,23 +419,26 @@ void SoftwareUart<_SU_RX_BUFFER>::begin(long speed)
 		// Enable the PCINT for the entire port here, but never disable it
 		// (others might also need it, so we disable the interrupt by using
 		// the per-pin PCMSK register).
-		*digitalPinToPCICR(_receivePin) |= _BV(digitalPinToPCICRbit(_receivePin));
+		*digitalPinToPCICR(_rxPin) |= _BV(digitalPinToPCICRbit(_rxPin));
 		// Precalculate the pcint mask register and value, so setRxIntMask
 		// can be used inside the ISR without costing too much time.
-		_pcint_maskreg = digitalPinToPCMSK(_receivePin);
-		_pcint_maskvalue = _BV(digitalPinToPCMSKbit(_receivePin));
+		_pcint_maskreg = digitalPinToPCMSK(_rxPin);
+		_pcint_maskvalue = _BV(digitalPinToPCMSKbit(_rxPin));
 
+#if (SU_MODE != SU_RX_ONLY)
 		tunedDelay(_tx_delay); // if we were low this establishes the end
-	}
-
-#if (_DEBUG > 1)
-	pinMode(_DEBUG_PIN1, OUTPUT);
-	pinMode(_DEBUG_PIN2, OUTPUT);
 #endif
-
+	}
+#endif
+#if (SU_MODE == SU_TX_ONLY)
+	tunedDelay(_tx_delay); // if we were low this establishes the end
+#endif
+#if (SU_MODE != SU_TX_ONLY)
 	listen();
+#endif
 }
 
+#if (SU_MODE != SU_TX_ONLY)
 template <uint8_t _SU_RX_BUFFER>
 void SoftwareUart<_SU_RX_BUFFER>::setRxIntMsk(bool enable)
 {
@@ -443,19 +448,10 @@ void SoftwareUart<_SU_RX_BUFFER>::setRxIntMsk(bool enable)
 		*_pcint_maskreg &= ~_pcint_maskvalue;
 }
 
-template <uint8_t _SU_RX_BUFFER>
-void SoftwareUart<_SU_RX_BUFFER>::end()
-{
-	stopListening();
-}
-
 // Read data from buffer
 template <uint8_t _SU_RX_BUFFER>
 int16_t SoftwareUart<_SU_RX_BUFFER>::read()
 {
-	if (!isListening())
-		return -1;
-
 	// Empty buffer?
 	if (_receive_buffer_head == _receive_buffer_tail)
 		return -1;
@@ -469,18 +465,35 @@ int16_t SoftwareUart<_SU_RX_BUFFER>::read()
 template <uint8_t _SU_RX_BUFFER>
 int16_t SoftwareUart<_SU_RX_BUFFER>::available()
 {
-	if (!isListening())
-		return 0;
-
 	return (_receive_buffer_tail + _SU_RX_BUFFER - _receive_buffer_head) % _SU_RX_BUFFER;
 }
 
 template <uint8_t _SU_RX_BUFFER>
+int16_t SoftwareUart<_SU_RX_BUFFER>::peek()
+{
+	// Empty buffer?
+	if (_receive_buffer_head == _receive_buffer_tail)
+		return -1;
+
+	// Read from "head"
+	return _receive_buffer[_receive_buffer_head];
+}
+
+#endif
+
+#if (SU_MODE != SU_RX_ONLY)
+#if (SU_MODE == SU_TX_ONLY)
+size_t SoftwareUart::write(uint8_t b)
+#else
+template <uint8_t _SU_RX_BUFFER>
 size_t SoftwareUart<_SU_RX_BUFFER>::write(uint8_t b)
+#endif
 {
 	if (_tx_delay == 0)
 	{
+#if (SU_MODE != SU_TX_ONLY)
 		setWriteError();
+#endif
 		return 0;
 	}
 
@@ -488,9 +501,9 @@ size_t SoftwareUart<_SU_RX_BUFFER>::write(uint8_t b)
 	// in registers _before_ disabling interrupts and entering the
 	// critical timing sections below, which makes it a lot easier to
 	// verify the cycle timings
-	volatile uint8_t *reg = _transmitPortRegister;
-	uint8_t reg_mask = _transmitBitMask;
-	uint8_t inv_mask = ~_transmitBitMask;
+	volatile uint8_t *reg = _txPort;
+	uint8_t reg_mask = _txBitMask;
+	uint8_t inv_mask = ~_txBitMask;
 	uint8_t oldSREG = SREG;
 	bool inv = _inverse_logic;
 	uint16_t delay = _tx_delay;
@@ -501,9 +514,9 @@ size_t SoftwareUart<_SU_RX_BUFFER>::write(uint8_t b)
 	cli();  // turn off interrupts for a clean txmit
 
 	// NS - Set Pin to Output
-	if (!_full_duplex)															//NS Added
+	if (_full_duplex == false)
 	{
-		pinMode(_transmitPin, OUTPUT);										//NS Added
+		pinMode(_txPin, OUTPUT);
 	}
 
 	// Write the start bit
@@ -526,36 +539,23 @@ size_t SoftwareUart<_SU_RX_BUFFER>::write(uint8_t b)
 		b >>= 1;
 	}
 
+	// NS - Set Pin back to Input
+	if (_full_duplex == false)
+	{
+		pinMode(_txPin, INPUT);
+	}
+
 	// restore pin to natural state
 	if (inv)
 		*reg &= inv_mask;
 	else
 		*reg |= reg_mask;
 
-	// NS - Set Pin back to Input
-	if (!_full_duplex)															//NS Added
-	{
-		pinMode(_transmitPin, INPUT);											//NS Added    
-	}
-
 	SREG = oldSREG; // turn interrupts back on
 	tunedDelay(_tx_delay);
 
 	return 1;
 }
-
-template <uint8_t _SU_RX_BUFFER>
-int16_t SoftwareUart<_SU_RX_BUFFER>::peek()
-{
-	if (!isListening())
-		return -1;
-
-	// Empty buffer?
-	if (_receive_buffer_head == _receive_buffer_tail)
-		return -1;
-
-	// Read from "head"
-	return _receive_buffer[_receive_buffer_head];
-}
+#endif
 
 #endif
