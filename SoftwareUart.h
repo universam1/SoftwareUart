@@ -316,11 +316,10 @@ SoftwareUart::SoftwareUart(uint8_t receivePin, uint8_t transmitPin, bool inverse
 	// is fine. With inverse logic, either order is fine.
 	digitalWrite(_txPin, _inverse_logic ? LOW : HIGH);
 
-#if (SU_MODE == SU_HALF_DUPLEX)
-	pinMode(_txPin, INPUT);
-#else
-	pinMode(_txPin, OUTPUT);
-#endif
+	if (_full_duplex == false)
+	{
+		pinMode(_txPin, INPUT);
+	}
 #endif
 
 #if (SU_MODE != SU_TX_ONLY)
