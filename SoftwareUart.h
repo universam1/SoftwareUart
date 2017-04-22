@@ -87,11 +87,21 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define SU_RX_ONLY 2
 
 #include <inttypes.h>
+#include <Arduino.h>
 
+#ifdef __AVR__
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
-#include <Arduino.h>
 #include <util/delay_basic.h>
+#elif defined(ESP8266)
+#include <interrupts.h>
+#include <pgmspace.h>
+#elif defined(ARDUINO_ARCH_SAMD)
+// nothing special needed
+#elif defined(ARDUINO_SAM_DUE)
+#define PROGMEM
+#define pgm_read_byte(addr) (*(const unsigned char *)(addr))
+#endif
 
 /******************************************************************************
 * Definitions
@@ -152,7 +162,16 @@ private:
 
 	// private static method for timing
 	//static inline void tunedDelay(uint16_t delay);
+#ifdef __AVR__
 	inline void tunedDelay(uint16_t delay) { _delay_loop_2(delay); }
+#else
+	inline void tunedDelay(uint16_t delay)
+	{
+		uint32_t delay_us = (4000000 / F_CPU);
+		delay_us *= delay;
+		delayMicroseconds(delay_us);
+	}
+#endif
 
 public:
 	// public methods

@@ -1,4 +1,3 @@
-.DS_Store
 *.vcxproj
 *.filters
 __vm
@@ -9,3 +8,5 @@ Release
 *.cppproj
 *.atsln
 *.componentinfo.xml
+*.user
+ClassDiagram.cd
