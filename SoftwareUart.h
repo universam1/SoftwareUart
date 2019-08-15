@@ -350,7 +350,7 @@ SoftwareUart::SoftwareUart(uint8_t receivePin, uint8_t transmitPin, bool inverse
 
 	_rxPin = receivePin;
 	_rxBitMask = digitalPinToBitMask(receivePin);
-	_rxPort = portOutputRegister(digitalPinToPort(receivePin));
+	_rxPort = portInputRegister(digitalPinToPort(receivePin));
 
 	pinMode(_rxPin, INPUT);
 	if (!_inverse_logic) { digitalWrite(_rxPin, HIGH); } // pullup for normal logic
